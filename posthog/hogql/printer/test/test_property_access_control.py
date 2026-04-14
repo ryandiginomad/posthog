@@ -1,5 +1,7 @@
 from posthog.test.base import BaseTest
 
+from parameterized import parameterized
+
 from posthog.hogql.context import HogQLContext
 from posthog.hogql.errors import ResolutionError
 from posthog.hogql.parser import parse_select
@@ -29,7 +31,7 @@ class TestRestrictPropertiesInHogQL(BaseTest):
             type=PropertyDefinition.Type.EVENT,
         )
 
-    def _compile_select(self, query: str, user=None) -> str:
+    def _compile_select_with_values(self, query: str, user=None) -> tuple[str, dict]:
         if user is None:
             user = self.user
         context = HogQLContext(
@@ -40,6 +42,10 @@ class TestRestrictPropertiesInHogQL(BaseTest):
         )
         node = parse_select(query)
         sql, _ = prepare_and_print_ast(node, context=context, dialect="clickhouse")
+        return sql, context.values
+
+    def _compile_select(self, query: str, user=None) -> str:
+        sql, _ = self._compile_select_with_values(query, user)
         return sql
 
     def test_no_restrictions_passes_through(self):
@@ -202,3 +208,147 @@ class TestRestrictPropertiesInHogQL(BaseTest):
         # the error should not mention restriction-specific words
         for forbidden_word in ["restricted", "denied", "permission", "not allowed"]:
             assert forbidden_word not in error_msg.lower(), f"Error message leaks access control info: '{error_msg}'"
+
+    @parameterized.expand(
+        [
+            ("events_properties", "SELECT properties FROM events", PropertyDefinition.Type.EVENT, "secret_field"),
+            ("events_star", "SELECT * FROM events", PropertyDefinition.Type.EVENT, "secret_field"),
+            (
+                "events_person_properties",
+                "SELECT person.properties FROM events",
+                PropertyDefinition.Type.PERSON,
+                "secret_person_field",
+            ),
+        ]
+    )
+    def test_restricted_properties_blob_uses_json_drop_keys(
+        self,
+        _case_name: str,
+        query: str,
+        property_type: int,
+        restricted_key: str,
+    ):
+        property_definition = self.event_prop
+        if property_type == PropertyDefinition.Type.PERSON:
+            property_definition = PropertyDefinition.objects.create(
+                team=self.team,
+                name=restricted_key,
+                property_type="String",
+                type=PropertyDefinition.Type.PERSON,
+            )
+
+        PropertyAccessControl.objects.create(
+            team=self.team,
+            property_definition=property_definition,
+            access_level=PropertyAccessLevel.NONE.value,
+        )
+        sql, values = self._compile_select_with_values(query)
+        assert "JSONDropKeys" in sql
+        assert restricted_key not in sql
+        assert restricted_key in values.values()
+
+    def test_properties_blob_no_wrapping_without_restrictions(self):
+        sql = self._compile_select("SELECT properties FROM events")
+        assert "JSONDropKeys" not in sql
+
+    def test_properties_blob_strips_multiple_restricted_keys(self):
+        another_prop = PropertyDefinition.objects.create(
+            team=self.team,
+            name="another_secret",
+            property_type="String",
+            type=PropertyDefinition.Type.EVENT,
+        )
+        PropertyAccessControl.objects.create(
+            team=self.team,
+            property_definition=self.event_prop,
+            access_level=PropertyAccessLevel.NONE.value,
+        )
+        PropertyAccessControl.objects.create(
+            team=self.team,
+            property_definition=another_prop,
+            access_level=PropertyAccessLevel.NONE.value,
+        )
+        sql, values = self._compile_select_with_values("SELECT properties FROM events")
+        assert "JSONDropKeys" in sql
+        assert "another_secret" not in sql
+        assert "secret_field" not in sql
+        assert "another_secret" in values.values()
+        assert "secret_field" in values.values()
+
+    @parameterized.expand([("persons",), ("raw_persons",)])
+    def test_persons_tables_properties_blob_strips_restricted_keys(self, table_name: str):
+        person_prop = PropertyDefinition.objects.create(
+            team=self.team,
+            name="secret_person_field",
+            property_type="String",
+            type=PropertyDefinition.Type.PERSON,
+        )
+        PropertyAccessControl.objects.create(
+            team=self.team,
+            property_definition=person_prop,
+            access_level=PropertyAccessLevel.NONE.value,
+        )
+        sql, values = self._compile_select_with_values(f"SELECT properties FROM {table_name}")
+        assert "JSONDropKeys" in sql
+        assert "secret_person_field" not in sql
+        assert "secret_person_field" in values.values()
+
+    def test_event_restriction_does_not_affect_person_properties_blob(self):
+        PropertyAccessControl.objects.create(
+            team=self.team,
+            property_definition=self.event_prop,
+            access_level=PropertyAccessLevel.NONE.value,
+        )
+        # restricting an event property should not wrap person.properties in JSONDropKeys
+        sql = self._compile_select("SELECT person.properties FROM events")
+        assert "JSONDropKeys" not in sql
+
+    def test_restrictions_do_not_affect_non_event_or_person_tables(self):
+        PropertyAccessControl.objects.create(
+            team=self.team,
+            property_definition=self.event_prop,
+            access_level=PropertyAccessLevel.NONE.value,
+        )
+        # the groups table has a StringJSONDatabaseField named "properties",
+        # but restrictions should only apply to events/persons tables
+        sql = self._compile_select("SELECT properties FROM groups")
+        assert "JSONDropKeys" not in sql
+
+    def test_explicit_property_access_on_non_event_table_not_blocked(self):
+        PropertyAccessControl.objects.create(
+            team=self.team,
+            property_definition=self.event_prop,
+            access_level=PropertyAccessLevel.NONE.value,
+        )
+        # accessing properties.secret_field on the groups table should not raise,
+        # even though "secret_field" is restricted on the events table
+        sql = self._compile_select("SELECT properties.secret_field FROM groups")
+        assert "secret_field" in sql
+
+    def test_column_aliased_properties_blob_still_uses_json_drop_keys(self):
+        # regression: ColumnAliasedTableType (``FROM events AS e(uuid, event, properties_alias)``)
+        # exposed ``properties`` under a different AST name; the guard previously compared the
+        # alias to "properties" and skipped JSONDropKeys, leaking restricted keys.
+        PropertyAccessControl.objects.create(
+            team=self.team,
+            property_definition=self.event_prop,
+            access_level=PropertyAccessLevel.NONE.value,
+        )
+        sql, values = self._compile_select_with_values("SELECT e.c FROM events AS e (a, b, c)")
+        assert "JSONDropKeys" in sql
+        assert "secret_field" not in sql
+        assert "secret_field" in values.values()
+
+    def test_column_aliased_explicit_property_access_is_blocked(self):
+        # regression: explicit access ``e.c.secret_field`` (where ``c`` aliases ``properties``)
+        # must still be blocked by property-level access control, matching the unaliased case.
+        PropertyAccessControl.objects.create(
+            team=self.team,
+            property_definition=self.event_prop,
+            access_level=PropertyAccessLevel.NONE.value,
+        )
+        with self.assertRaises(ResolutionError) as cm:
+            self._compile_select("SELECT e.c.secret_field FROM events AS e (a, b, c)")
+        # error message uses the alias (``c``), matching the standard "field has no such child"
+        # error so attackers cannot distinguish restricted from non-existent.
+        assert str(cm.exception) == 'Can not access property "secret_field" on field "c".'

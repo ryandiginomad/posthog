@@ -710,7 +710,17 @@ class FieldType(Type):
         so that an attacker cannot distinguish between "this property exists but I can't see it"
         and "this property doesn't exist".
         """
-        if not context.restricted_properties or self.name != "properties":
+        if not context.restricted_properties:
+            return
+
+        # Resolve to the underlying DB column name. With column-alias table syntax
+        # (``FROM events AS e(uuid, event, ..., p)``) ``self.name`` is the alias (``p``),
+        # while the underlying column is still ``properties``. Checking ``self.name`` alone
+        # would let an attacker bypass property-level access control (e.g. ``e.p.secret``).
+        resolved_name = self.name
+        if isinstance(self.table_type, ColumnAliasedTableType):
+            resolved_name = self.table_type.alias_to_original.get(self.name, self.name)
+        if resolved_name != "properties":
             return
 
         from posthog.hogql.database.schema.events import EventsTable
