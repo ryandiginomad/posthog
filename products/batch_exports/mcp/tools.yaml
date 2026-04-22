@@ -10,7 +10,7 @@ url_prefix: /data-pipelines/destinations
 ui_apps: {}
 tools:
     batch-exports-list:
-        operation: batch_exports_list
+        operation: batch_exports_list_2
         enabled: true
         scopes:
             - batch_export:read
@@ -25,7 +25,7 @@ tools:
             destinations like S3, Snowflake, BigQuery, Databricks, Azure Blob, Postgres, Redshift, or HTTP. Returns
             destination type, interval, paused state, and non-sensitive config; credentials are never exposed.
     batch-export-get:
-        operation: batch_exports_retrieve
+        operation: batch_exports_retrieve_2
         enabled: true
         scopes:
             - batch_export:read
@@ -38,7 +38,7 @@ tools:
             Get a batch export by ID. Returns full non-sensitive configuration including destination type and config,
             linked Integration id (for Databricks and AzureBlob), schedule, model, and the 10 most recent runs.
     batch-export-create:
-        operation: batch_exports_create
+        operation: batch_exports_create_2
         enabled: true
         scopes:
             - batch_export:write
@@ -60,7 +60,7 @@ tools:
             - last_paused_at
             - latest_runs
     batch-export-update:
-        operation: batch_exports_partial_update
+        operation: batch_exports_partial_update_2
         enabled: true
         scopes:
             - batch_export:write
@@ -80,7 +80,7 @@ tools:
             - last_paused_at
             - latest_runs
     batch-export-delete:
-        operation: batch_exports_destroy
+        operation: batch_exports_destroy_2
         enabled: true
         scopes:
             - batch_export:write
