@@ -83,6 +83,8 @@ export const OAUTH_SCOPES_SUPPORTED = [
     'action:write',
     'activity_log:read',
     'approvals:read',
+    'batch_export:read',
+    'batch_export:write',
     'comment:read',
     'cohort:read',
     'cohort:write',
