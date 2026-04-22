@@ -17,7 +17,7 @@ from django.utils.timezone import now
 import structlog
 import posthoganalytics
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, extend_schema_field
+from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema, extend_schema_field
 from rest_framework import filters, mixins, request, response, serializers, status, viewsets
 from rest_framework.exceptions import NotAuthenticated, NotFound, PermissionDenied, ValidationError
 from rest_framework.pagination import CursorPagination
@@ -234,12 +234,112 @@ class BatchExportRunViewSet(TeamAndOrgViewSetMixin, LogEntryMixin, viewsets.Read
         return response.Response({"cancelled": True})
 
 
-class BatchExportDestinationSerializer(serializers.ModelSerializer):
-    """Serializer for an BatchExportDestination model."""
+class DatabricksDestinationConfigSerializer(serializers.Serializer):
+    """Typed configuration for a Databricks batch-export destination.
 
-    integration = TeamScopedPrimaryKeyRelatedField(queryset=Integration.objects.all(), required=False, allow_null=True)
+    Credentials live in the linked Integration, not in this config. Mirrors
+    `DatabricksBatchExportInputs` in `products/batch_exports/backend/service.py`.
+    """
+
+    http_path = serializers.CharField(help_text="Databricks SQL warehouse HTTP path.")
+    catalog = serializers.CharField(help_text="Unity Catalog name.")
+    schema = serializers.CharField(help_text="Schema (database) name inside the catalog.")
+    table_name = serializers.CharField(help_text="Destination table name.")
+    use_variant_type = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text="Whether to use the Databricks VARIANT type for JSON-like columns.",
+    )
+    use_automatic_schema_evolution = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text="Whether to let Databricks evolve the destination table schema automatically.",
+    )
+
+
+class AzureBlobDestinationConfigSerializer(serializers.Serializer):
+    """Typed configuration for an Azure Blob Storage batch-export destination.
+
+    Credentials live in the linked Integration, not in this config. Mirrors
+    `AzureBlobBatchExportInputs` in `products/batch_exports/backend/service.py`.
+    """
+
+    container_name = serializers.CharField(help_text="Azure Blob Storage container name.")
+    prefix = serializers.CharField(
+        required=False,
+        default="",
+        allow_blank=True,
+        help_text="Object key prefix applied to every exported file.",
+    )
+    compression = serializers.ChoiceField(
+        choices=sorted({codec for codecs in AZURE_BLOB_SUPPORTED_COMPRESSIONS.values() for codec in codecs}),
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="Optional compression codec applied to exported files. Valid codecs depend on file_format.",
+    )
+    file_format = serializers.ChoiceField(
+        choices=["JSONLines", "Parquet"],
+        required=False,
+        default="JSONLines",
+        help_text="File format used for exported objects.",
+    )
+    max_file_size_mb = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="If set, rolls to a new file once the current file exceeds this size in MB.",
+    )
+
+
+@extend_schema_field(
+    PolymorphicProxySerializer(
+        component_name="BatchExportDestinationConfig",
+        serializers={
+            "Databricks": DatabricksDestinationConfigSerializer,
+            "AzureBlob": AzureBlobDestinationConfigSerializer,
+        },
+        resource_type_field_name="type",
+    )
+)
+class TypedBatchExportDestinationConfigField(serializers.JSONField):
+    """JSONField with a polymorphic OpenAPI schema keyed by the sibling `type`.
+
+    Runtime validation remains a plain JSONField (see
+    `BatchExportDestinationSerializer.validate`); the decorator only shapes the
+    generated OpenAPI spec so clients and MCP tools see typed configs for
+    integration-backed destinations.
+    """
+
+    pass
+
+
+class BatchExportDestinationSerializer(serializers.ModelSerializer):
+    """Serializer for an BatchExportDestination model.
+
+    The `config` field is polymorphic and typed only for destinations that keep
+    credentials in the linked Integration (currently Databricks and AzureBlob).
+    Other destination types accept the same JSON shape but without a typed
+    OpenAPI schema. Secret fields are stripped from `config` on read.
+    """
+
+    config = TypedBatchExportDestinationConfigField(
+        help_text=(
+            "Destination-specific configuration. Fields depend on `type`. Credentials for "
+            "integration-backed destinations (Databricks, AzureBlob) are NOT stored here — "
+            "they live in the linked Integration. Secret fields are stripped from responses."
+        ),
+    )
     integration_id = TeamScopedPrimaryKeyRelatedField(
-        write_only=True, queryset=Integration.objects.all(), source="integration", required=False, allow_null=True
+        write_only=True,
+        queryset=Integration.objects.all(),
+        source="integration",
+        required=False,
+        allow_null=True,
+        help_text=(
+            "ID of a team-scoped Integration providing credentials. Required for Databricks "
+            "and AzureBlob destinations; optional for BigQuery; unused for other types."
+        ),
     )
 
     class Meta:
@@ -485,13 +585,42 @@ def resolve_and_validate_host(host: str) -> None:
 class BatchExportSerializer(serializers.ModelSerializer):
     """Serializer for a BatchExport model."""
 
-    destination = BatchExportDestinationSerializer()
-    latest_runs = BatchExportRunSerializer(many=True, read_only=True)
-    interval = serializers.ChoiceField(choices=BATCH_EXPORT_INTERVALS)
-    hogql_query = HogQLSelectQueryField(required=False)
-    timezone = serializers.ChoiceField(choices=TIMEZONES, required=False, allow_null=True)
-    offset_day = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=6)
-    offset_hour = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=23)
+    destination = BatchExportDestinationSerializer(
+        help_text="Destination configuration (type, config, and optional integration)."
+    )
+    latest_runs = BatchExportRunSerializer(
+        many=True,
+        read_only=True,
+        help_text="The 10 most recent runs of this batch export, ordered newest first.",
+    )
+    interval = serializers.ChoiceField(
+        choices=BATCH_EXPORT_INTERVALS,
+        help_text="How often the batch export should run.",
+    )
+    hogql_query = HogQLSelectQueryField(
+        required=False,
+        help_text="Optional HogQL SELECT query used when `schema` is set; defines the custom shape of each exported record.",
+    )
+    timezone = serializers.ChoiceField(
+        choices=TIMEZONES,
+        required=False,
+        allow_null=True,
+        help_text="IANA timezone name controlling daily and weekly interval boundaries. Defaults to UTC.",
+    )
+    offset_day = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+        max_value=6,
+        help_text="Day-of-week offset for weekly intervals (0=Sunday, 6=Saturday). Only valid when interval is 'week'.",
+    )
+    offset_hour = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+        max_value=23,
+        help_text="Hour-of-day offset (0-23) for daily and weekly intervals. Only valid when interval is 'day' or 'week'.",
+    )
 
     class Meta:
         model = BatchExport
