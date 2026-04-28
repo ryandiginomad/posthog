@@ -30,15 +30,18 @@ def create_default_modifiers_for_user(
     else:
         modifiers = modifiers.model_copy()
 
-    modifiers.useMaterializedViews = posthoganalytics.feature_enabled(
-        "data-modeling",
-        str(user.distinct_id),
-        person_properties={
-            "email": user.email,
-        },
-        only_evaluate_locally=True,
-        send_feature_flag_events=False,
-    )
+    # Synthetic service principals (e.g. ProjectSecretAPIKeyUser) have no
+    # `distinct_id` / `email` to evaluate per-user feature flags against
+    if user.distinct_id is not None:
+        modifiers.useMaterializedViews = posthoganalytics.feature_enabled(
+            "data-modeling",
+            str(user.distinct_id),
+            person_properties={
+                "email": user.email,
+            },
+            only_evaluate_locally=True,
+            send_feature_flag_events=False,
+        )
 
     return create_default_modifiers_for_team(team, modifiers)
 
