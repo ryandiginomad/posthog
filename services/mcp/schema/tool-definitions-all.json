@@ -314,36 +314,6 @@
             "readOnlyHint": true
         }
     },
-    "batch-exports-list": {
-        "description": "List batch exports in the project. Batch exports send event, person, or session data on a schedule to destinations like S3, Snowflake, BigQuery, Databricks, Azure Blob, Postgres, Redshift, or HTTP. Returns destination type, interval, paused state, and non-sensitive config; credentials are never exposed.",
-        "category": "Data pipelines",
-        "feature": "batch_exports",
-        "summary": "List batch exports",
-        "title": "List batch exports",
-        "required_scopes": ["batch_export:read"],
-        "new_mcp": true,
-        "annotations": {
-            "destructiveHint": false,
-            "idempotentHint": true,
-            "openWorldHint": true,
-            "readOnlyHint": true
-        }
-    },
-    "batch-export-get": {
-        "description": "Get a batch export by ID. Returns full non-sensitive configuration including destination type and config, linked Integration id (for Databricks and AzureBlob), schedule, model, and the 10 most recent runs.",
-        "category": "Data pipelines",
-        "feature": "batch_exports",
-        "summary": "Get batch export",
-        "title": "Get batch export",
-        "required_scopes": ["batch_export:read"],
-        "new_mcp": true,
-        "annotations": {
-            "destructiveHint": false,
-            "idempotentHint": true,
-            "openWorldHint": true,
-            "readOnlyHint": true
-        }
-    },
     "batch-export-create": {
         "description": "Create a new batch export. Typed destination config schemas are available for Databricks and AzureBlob destinations — both require a team-scoped Integration (use integrations-list to find one). Other destination types are permitted by the API but typically must be created via the PostHog UI because their credentials are stored in the destination config.",
         "category": "Data pipelines",
@@ -355,21 +325,6 @@
         "annotations": {
             "destructiveHint": false,
             "idempotentHint": false,
-            "openWorldHint": true,
-            "readOnlyHint": false
-        }
-    },
-    "batch-export-update": {
-        "description": "Partially update a batch export. Top-level fields (name, paused, interval, schema, filters) work for any destination type. Destination config updates are only typed for Databricks and AzureBlob destinations.",
-        "category": "Data pipelines",
-        "feature": "batch_exports",
-        "summary": "Update batch export",
-        "title": "Update batch export",
-        "required_scopes": ["batch_export:write"],
-        "new_mcp": true,
-        "annotations": {
-            "destructiveHint": false,
-            "idempotentHint": true,
             "openWorldHint": true,
             "readOnlyHint": false
         }
@@ -387,6 +342,51 @@
             "idempotentHint": true,
             "openWorldHint": true,
             "readOnlyHint": false
+        }
+    },
+    "batch-export-get": {
+        "description": "Get a batch export by ID. Returns full non-sensitive configuration including destination type and config, linked Integration id (for Databricks and AzureBlob), schedule, model, and the 10 most recent runs.",
+        "category": "Data pipelines",
+        "feature": "batch_exports",
+        "summary": "Get batch export",
+        "title": "Get batch export",
+        "required_scopes": ["batch_export:read"],
+        "new_mcp": true,
+        "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
+        }
+    },
+    "batch-export-update": {
+        "description": "Partially update a batch export. Top-level fields (name, paused, interval, schema, filters) work for any destination type. Destination config updates are only typed for Databricks and AzureBlob destinations.",
+        "category": "Data pipelines",
+        "feature": "batch_exports",
+        "summary": "Update batch export",
+        "title": "Update batch export",
+        "required_scopes": ["batch_export:write"],
+        "new_mcp": true,
+        "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": false
+        }
+    },
+    "batch-exports-list": {
+        "description": "List batch exports in the project. Batch exports send event, person, or session data on a schedule to destinations like S3, Snowflake, BigQuery, Databricks, Azure Blob, Postgres, Redshift, or HTTP. Returns destination type, interval, paused state, and non-sensitive config; credentials are never exposed.",
+        "category": "Data pipelines",
+        "feature": "batch_exports",
+        "summary": "List batch exports",
+        "title": "List batch exports",
+        "required_scopes": ["batch_export:read"],
+        "new_mcp": true,
+        "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
         }
     },
     "cdp-function-templates-list": {
