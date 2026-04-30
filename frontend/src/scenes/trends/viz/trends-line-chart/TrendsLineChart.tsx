@@ -1,5 +1,6 @@
 import { useValues } from 'kea'
-import { useCallback, useMemo } from 'react'
+import posthog from 'posthog-js'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { createXAxisTickCallback } from 'lib/charts/utils/dates'
 import { buildTheme } from 'lib/charts/utils/theme'
@@ -70,6 +71,23 @@ export function TrendsLineChart({ context, inSharedMode = false }: TrendsLineCha
     } = useValues(trendsDataLogic(insightProps))
     const { timezone, weekStartDay, baseCurrency } = useValues(teamLogic)
     const { aggregationLabel } = useValues(groupsModel)
+
+    const capturedRef = useRef(false)
+    useEffect(() => {
+        if (capturedRef.current) {
+            return
+        }
+        capturedRef.current = true
+        posthog.capture('hog chart rendered', {
+            chart_type: display ?? ChartDisplayType.ActionsLineGraph,
+            has_breakdown: !!breakdownFilter?.breakdown,
+            series_count: indexedResults?.length ?? 0,
+            insight_short_id: insight?.short_id,
+            dashboard_id: insightProps?.dashboardId,
+            in_shared_mode: inSharedMode,
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     const isPercentStackView = !!showPercentStackView && !!supportsPercentStackView
     const resolvedGroupTypeLabel =
