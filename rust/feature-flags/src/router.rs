@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use crate::billing_limiters::{FeatureFlagsLimiter, SessionReplayLimiter};
+use crate::billing::{BillingAggregator, FeatureFlagsLimiter, SessionReplayLimiter};
 use crate::database_pools::DatabasePools;
 use axum::{
     error_handling::HandleErrorLayer,
@@ -99,6 +99,9 @@ pub struct State {
     pub auth_token_cache: Arc<ReadThroughCacheWithMetrics>,
     /// Provider for realtime/behavioral cohort membership lookups
     pub cohort_membership_provider: Arc<dyn CohortMembershipProvider>,
+    /// Shadow-keyspace billing aggregator. See `crate::billing` for the
+    /// dual-write contract.
+    pub billing_aggregator: Option<Arc<BillingAggregator>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -123,6 +126,7 @@ pub fn router(
     team_negative_cache: NegativeCache,
     auth_token_cache: Arc<ReadThroughCacheWithMetrics>,
     cohort_membership_provider: Arc<dyn CohortMembershipProvider>,
+    billing_aggregator: Option<Arc<BillingAggregator>>,
     config: Config,
 ) -> Router {
     // Initialize flag definitions rate limiter with default and custom team rates
@@ -210,6 +214,7 @@ pub fn router(
         team_negative_cache,
         cohort_membership_provider,
         auth_token_cache,
+        billing_aggregator,
     };
 
     // Very permissive CORS policy, as old SDK versions
