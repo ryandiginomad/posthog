@@ -3,54 +3,17 @@ import { z } from 'zod'
 
 import type { Schemas } from '@/api/generated'
 import {
-    BatchExportsCreate2Body,
-    BatchExportsDestroy2Params,
-    BatchExportsList2QueryParams,
-    BatchExportsPartialUpdate2Body,
-    BatchExportsPartialUpdate2Params,
-    BatchExportsRetrieve2Params,
+    BatchExportsCreateBody,
+    BatchExportsDestroyParams,
+    BatchExportsListQueryParams,
+    BatchExportsPartialUpdateBody,
+    BatchExportsPartialUpdateParams,
+    BatchExportsRetrieveParams,
 } from '@/generated/batch_exports/api'
 import { withPostHogUrl, type WithPostHogUrl } from '@/tools/tool-utils'
 import type { Context, ToolBase, ZodObjectAny } from '@/tools/types'
 
-const BatchExportsListSchema = BatchExportsList2QueryParams
-
-const batchExportsList = (): ToolBase<
-    typeof BatchExportsListSchema,
-    WithPostHogUrl<Schemas.PaginatedBatchExportList>
-> => ({
-    name: 'batch-exports-list',
-    schema: BatchExportsListSchema,
-    handler: async (context: Context, params: z.infer<typeof BatchExportsListSchema>) => {
-        const projectId = await context.stateManager.getProjectId()
-        const result = await context.api.request<Schemas.PaginatedBatchExportList>({
-            method: 'GET',
-            path: `/api/projects/${encodeURIComponent(String(projectId))}/batch_exports/`,
-            query: {
-                limit: params.limit,
-                offset: params.offset,
-            },
-        })
-        return await withPostHogUrl(context, result, '/data-pipelines/destinations')
-    },
-})
-
-const BatchExportGetSchema = BatchExportsRetrieve2Params.omit({ project_id: true })
-
-const batchExportGet = (): ToolBase<typeof BatchExportGetSchema, Schemas.BatchExport> => ({
-    name: 'batch-export-get',
-    schema: BatchExportGetSchema,
-    handler: async (context: Context, params: z.infer<typeof BatchExportGetSchema>) => {
-        const projectId = await context.stateManager.getProjectId()
-        const result = await context.api.request<Schemas.BatchExport>({
-            method: 'GET',
-            path: `/api/projects/${encodeURIComponent(String(projectId))}/batch_exports/${encodeURIComponent(String(params.id))}/`,
-        })
-        return result
-    },
-})
-
-const BatchExportCreateSchema = BatchExportsCreate2Body
+const BatchExportCreateSchema = BatchExportsCreateBody
 
 const batchExportCreate = (): ToolBase<typeof BatchExportCreateSchema, Schemas.BatchExport> => ({
     name: 'batch-export-create',
@@ -103,8 +66,38 @@ const batchExportCreate = (): ToolBase<typeof BatchExportCreateSchema, Schemas.B
     },
 })
 
-const BatchExportUpdateSchema = BatchExportsPartialUpdate2Params.omit({ project_id: true }).extend(
-    BatchExportsPartialUpdate2Body.shape
+const BatchExportDeleteSchema = BatchExportsDestroyParams.omit({ project_id: true })
+
+const batchExportDelete = (): ToolBase<typeof BatchExportDeleteSchema, unknown> => ({
+    name: 'batch-export-delete',
+    schema: BatchExportDeleteSchema,
+    handler: async (context: Context, params: z.infer<typeof BatchExportDeleteSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const result = await context.api.request<unknown>({
+            method: 'DELETE',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/batch_exports/${encodeURIComponent(String(params.id))}/`,
+        })
+        return result
+    },
+})
+
+const BatchExportGetSchema = BatchExportsRetrieveParams.omit({ project_id: true })
+
+const batchExportGet = (): ToolBase<typeof BatchExportGetSchema, Schemas.BatchExport> => ({
+    name: 'batch-export-get',
+    schema: BatchExportGetSchema,
+    handler: async (context: Context, params: z.infer<typeof BatchExportGetSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const result = await context.api.request<Schemas.BatchExport>({
+            method: 'GET',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/batch_exports/${encodeURIComponent(String(params.id))}/`,
+        })
+        return result
+    },
+})
+
+const BatchExportUpdateSchema = BatchExportsPartialUpdateParams.omit({ project_id: true }).extend(
+    BatchExportsPartialUpdateBody.shape
 )
 
 const batchExportUpdate = (): ToolBase<typeof BatchExportUpdateSchema, Schemas.BatchExport> => ({
@@ -158,25 +151,32 @@ const batchExportUpdate = (): ToolBase<typeof BatchExportUpdateSchema, Schemas.B
     },
 })
 
-const BatchExportDeleteSchema = BatchExportsDestroy2Params.omit({ project_id: true })
+const BatchExportsListSchema = BatchExportsListQueryParams
 
-const batchExportDelete = (): ToolBase<typeof BatchExportDeleteSchema, unknown> => ({
-    name: 'batch-export-delete',
-    schema: BatchExportDeleteSchema,
-    handler: async (context: Context, params: z.infer<typeof BatchExportDeleteSchema>) => {
+const batchExportsList = (): ToolBase<
+    typeof BatchExportsListSchema,
+    WithPostHogUrl<Schemas.PaginatedBatchExportList>
+> => ({
+    name: 'batch-exports-list',
+    schema: BatchExportsListSchema,
+    handler: async (context: Context, params: z.infer<typeof BatchExportsListSchema>) => {
         const projectId = await context.stateManager.getProjectId()
-        const result = await context.api.request<unknown>({
-            method: 'DELETE',
-            path: `/api/projects/${encodeURIComponent(String(projectId))}/batch_exports/${encodeURIComponent(String(params.id))}/`,
+        const result = await context.api.request<Schemas.PaginatedBatchExportList>({
+            method: 'GET',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/batch_exports/`,
+            query: {
+                limit: params.limit,
+                offset: params.offset,
+            },
         })
-        return result
+        return await withPostHogUrl(context, result, '/data-pipelines/destinations')
     },
 })
 
 export const GENERATED_TOOLS: Record<string, () => ToolBase<ZodObjectAny>> = {
-    'batch-exports-list': batchExportsList,
-    'batch-export-get': batchExportGet,
     'batch-export-create': batchExportCreate,
-    'batch-export-update': batchExportUpdate,
     'batch-export-delete': batchExportDelete,
+    'batch-export-get': batchExportGet,
+    'batch-export-update': batchExportUpdate,
+    'batch-exports-list': batchExportsList,
 }
