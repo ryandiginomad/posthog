@@ -402,8 +402,6 @@ export interface NotificationSettings {
     web_analytics_weekly_digest: boolean
     web_analytics_weekly_digest_project_enabled?: Record<string, boolean>
     organization_member_join_email_disabled?: Record<string, boolean>
-    workflows_notifications_disabled?: boolean
-    workflow_rate_limited?: boolean
 }
 
 export interface InAppNotification {
