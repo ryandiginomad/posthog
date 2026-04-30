@@ -33,8 +33,8 @@ tools:
             idempotent: true
         title: Get integration
         description: >
-            Get a specific integration by ID. Returns full integration details including kind, display name,
-            error status, and creation metadata. Does not expose sensitive credentials or raw configuration.
+            Get a specific integration by ID. Returns full integration details including kind, display name, error
+            status, and creation metadata. Does not expose sensitive credentials or raw configuration.
         response:
             include:
                 - id
@@ -116,8 +116,8 @@ tools:
         title: List integrations
         description: >
             List all third-party integrations configured in the current project. Returns each integration's type (kind),
-            display name, and creation metadata. Common kinds include slack, github, hubspot, salesforce, and various
-            ad platforms. Use integration-get to retrieve full details for a specific integration.
+            display name, and creation metadata. Common kinds include slack, github, hubspot, salesforce, and various ad
+            platforms. Use integration-get to retrieve full details for a specific integration.
         response:
             include:
                 - id
