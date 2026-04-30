@@ -1414,6 +1414,7 @@ class SessionRecordingViewSet(
         session_id: str,
         user: User,
         product_context: str | None = None,
+        custom_tags: dict[str, str] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Stream video-based summarization progress events and final summary to the client.
 
@@ -1432,6 +1433,7 @@ class SessionRecordingViewSet(
                 user=user,
                 team=self.team,
                 product_context=product_context,
+                custom_tags=custom_tags,
             ):
                 yield chunk
         except Exception as e:
@@ -1441,10 +1443,11 @@ class SessionRecordingViewSet(
                 event_data="Something went wrong while generating the summary. Please try again.",
             )
 
-    def _load_team_product_context(self) -> str | None:
+    def _load_team_summary_config(self) -> tuple[str | None, dict[str, str] | None]:
         team_config = get_or_create_team_extension(self.team, TeamSessionSummariesConfig)
-        product_context = (team_config.product_context or "").strip()
-        return product_context or None
+        product_context = (team_config.product_context or "").strip() or None
+        custom_tags = team_config.custom_tags or None
+        return product_context, custom_tags
 
     @extend_schema(exclude=True)
     @action(methods=["POST"], detail=True)
@@ -1480,7 +1483,7 @@ class SessionRecordingViewSet(
             raise exceptions.ValidationError("session summary is not enabled for this user")
         session_id = str(recording.session_id)
         tracking_id = generate_tracking_id()
-        product_context = self._load_team_product_context()
+        product_context, custom_tags = self._load_team_summary_config()
 
         capture_session_summary_started(
             user=user,
@@ -1492,7 +1495,7 @@ class SessionRecordingViewSet(
             video_based=True,
         )
         response = StreamingHttpResponse(
-            self._generate_video_based_summary(session_id, user, product_context),
+            self._generate_video_based_summary(session_id, user, product_context, custom_tags),
             content_type=ServerSentEventRenderer.media_type,
         )
         response["Cache-Control"] = "no-cache"
