@@ -42,6 +42,7 @@ interface QueryWindowProps {
     onShowDatabaseTree: () => void
     showQueryPanel?: boolean
     showOutputPanel?: boolean
+    onShareTab?: () => void
 }
 
 export function QueryWindow({
@@ -52,6 +53,7 @@ export function QueryWindow({
     onShowDatabaseTree,
     showQueryPanel = true,
     showOutputPanel = true,
+    onShareTab,
 }: QueryWindowProps): JSX.Element {
     const codeEditorKey = `hogql-editor-${tabId}`
 
@@ -257,7 +259,7 @@ export function QueryWindow({
                 />
             ) : null}
 
-            {showOutputPanel ? <InternalQueryWindow tabId={tabId} /> : null}
+            {showOutputPanel ? <InternalQueryWindow tabId={tabId} onShareTab={onShareTab} /> : null}
         </div>
     )
 }
@@ -376,14 +378,20 @@ function RunButton(): JSX.Element {
     )
 }
 
-const InternalQueryWindow = memo(function InternalQueryWindow({ tabId }: { tabId: string }): JSX.Element | null {
+const InternalQueryWindow = memo(function InternalQueryWindow({
+    tabId,
+    onShareTab,
+}: {
+    tabId: string
+    onShareTab?: () => void
+}): JSX.Element | null {
     const { finishedLoading } = useValues(sqlEditorLogic)
 
     if (finishedLoading) {
         return null
     }
 
-    return <OutputPane tabId={tabId} />
+    return <OutputPane tabId={tabId} onShareTab={onShareTab} />
 })
 
 function CollapsedConnectionSelector({

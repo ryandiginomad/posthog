@@ -1,16 +1,23 @@
 import './EditorScene.scss'
 
+import { useActions } from 'kea'
+
 import { SceneExport } from 'scenes/sceneTypes'
 
+import { editorSceneLogic } from './editorSceneLogic'
 import { SQLEditor } from './SQLEditor'
-import { sqlEditorLogic } from './sqlEditorLogic'
 import { SQLEditorMode } from './sqlEditorModes'
 
 export const scene: SceneExport = {
-    logic: sqlEditorLogic,
+    logic: editorSceneLogic,
     component: EditorScene,
 }
 
 export function EditorScene({ tabId }: { tabId?: string }): JSX.Element {
-    return <SQLEditor tabId={tabId} mode={SQLEditorMode.FullScene} showDatabaseTree={true} />
+    const resolvedTabId = tabId ?? 'default'
+    const { shareTab } = useActions(editorSceneLogic({ tabId: resolvedTabId }))
+
+    return (
+        <SQLEditor tabId={resolvedTabId} mode={SQLEditorMode.FullScene} showDatabaseTree={true} onShareTab={shareTab} />
+    )
 }
