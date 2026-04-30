@@ -291,6 +291,7 @@ export const editorSceneLogic = kea<editorSceneLogicType>([
                 const currentVisualizationQuery = getCurrentVisualizationQuery(dataLogicKey, sourceQuery)
 
                 const sourceQueryWithoutUndefinedAndNullKeys = removeUndefinedAndNull(currentVisualizationQuery)
+                // Normalize so DataTableNode-based insights don't look "changed" immediately after load.
                 const editingInsightQuery = toDataVisualizationNode(editingInsight.query) ?? editingInsight.query
 
                 return (
@@ -322,7 +323,7 @@ export const editorSceneLogic = kea<editorSceneLogicType>([
             } else if (activeTab.view) {
                 shareUrl.searchParams.set('open_view', activeTab.view.id)
 
-                if (queryInput != activeTab.view.query?.query) {
+                if (queryInput !== activeTab.view.query?.query) {
                     shareUrl.searchParams.set('open_query', queryInput ?? '')
                 }
             } else {
