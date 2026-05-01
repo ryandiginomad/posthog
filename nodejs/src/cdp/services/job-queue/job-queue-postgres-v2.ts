@@ -1,5 +1,5 @@
 import { chunk } from 'lodash'
-import { Gauge } from 'prom-client'
+import { Counter, Gauge } from 'prom-client'
 
 import { instrumentFn } from '~/common/tracing/tracing-utils'
 import { parseJSON } from '~/utils/json-parse'
@@ -14,6 +14,12 @@ import { cdpJobSizeCompressedKb, cdpJobSizeKb } from './shared'
 const pendingJobsGauge = new Gauge({
     name: 'cdp_cyclotron_v2_pending_jobs',
     help: 'Number of postgres-v2 jobs currently held in memory awaiting ack/fail/reschedule',
+})
+
+const queuedJobsDistinctIdCounter = new Counter({
+    name: 'cdp_cyclotron_v2_queued_jobs_distinct_id_total',
+    help: 'Postgres-v2 jobs queued, labelled with whether distinct_id was populated. Used to verify the column is populated before the subscription matcher consumer ships.',
+    labelNames: ['has_distinct_id'],
 })
 
 /**
@@ -232,6 +238,10 @@ function invocationToV2JobInit(invocation: CyclotronJobInvocation): CyclotronV2J
     const state = serializeState(invocation)
     cdpJobSizeKb.labels('postgres-v2').observe(state.length / 1024)
     cdpJobSizeCompressedKb.labels('postgres-v2').observe(state.length / 1024)
+
+    const distinctId = extractDistinctId(invocation)
+    queuedJobsDistinctIdCounter.labels(distinctId === null ? 'false' : 'true').inc()
+
     return {
         id: invocation.id,
         teamId: invocation.teamId,
@@ -241,7 +251,19 @@ function invocationToV2JobInit(invocation: CyclotronJobInvocation): CyclotronV2J
         scheduled: invocation.queueScheduledAt?.toJSDate() ?? new Date(),
         parentRunId: invocation.parentRunId ?? null,
         state,
+        distinctId,
     }
+}
+
+/**
+ * Extract distinct_id from invocation state for the top-level column.
+ * Event-triggered hogflow jobs have state.event.distinct_id; batch-triggered
+ * hogflow jobs have state.personId. Generic hog jobs have neither, in which
+ * case the column stays NULL and the partial index excludes the row.
+ */
+export function extractDistinctId(invocation: CyclotronJobInvocation): string | null {
+    const state = invocation.state as { event?: { distinct_id?: string }; personId?: string } | null | undefined
+    return state?.event?.distinct_id ?? state?.personId ?? null
 }
 
 function v2JobToInvocation(job: CyclotronV2DequeuedJob): CyclotronJobInvocation {
