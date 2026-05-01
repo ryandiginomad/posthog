@@ -7,6 +7,7 @@ from posthog.scopes import APIScopeObject
 
 class NotificationType(str, Enum):
     COMMENT_MENTION = "comment_mention"
+    PIPELINE_FAILURE = "pipeline_failure"
 
 
 class Priority(str, Enum):
