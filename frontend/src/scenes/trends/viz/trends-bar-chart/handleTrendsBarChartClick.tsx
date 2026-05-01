@@ -24,7 +24,11 @@ function resolveDataset(seriesKey: string, indexedResults: IndexedTrendResult[])
     return indexedResults.find((r) => String(r.id) === seriesKey) ?? null
 }
 
-export function handleTrendsBarChartClick(seriesKey: string, dataIndex: number, deps: TrendsBarChartClickDeps): void {
+export function handleTrendsBarTimeChartClick(
+    seriesKey: string,
+    dataIndex: number,
+    deps: TrendsBarChartClickDeps
+): void {
     const dataset = resolveDataset(seriesKey, deps.indexedResults)
     if (!dataset) {
         return
@@ -68,6 +72,42 @@ export function handleTrendsBarChartClick(seriesKey: string, dataIndex: number, 
     deps.openPersonsModal({
         title,
         query: datasetToActorsQuery({ dataset, query: deps.querySource, day }),
+        additionalSelect: {
+            value_at_data_point: 'event_count',
+            matched_recordings: 'matched_recordings',
+        },
+        orderBy: ['event_count DESC, actor_id DESC'],
+    })
+}
+
+/** Click handler for horizontal aggregated bars (ActionsBarValue). The chart is sparse-stacked
+ *  so band index === result index — resolve via dataIndex, not the primary series picked by
+ *  buildPointClickData (that's the first non-excluded series, regardless of which band was clicked). */
+export function handleTrendsBarAggregatedChartClick(dataIndex: number, deps: TrendsBarChartClickDeps): void {
+    const dataset = deps.indexedResults[dataIndex]
+    if (!dataset) {
+        return
+    }
+
+    if (deps.context?.onDataPointClick) {
+        deps.context.onDataPointClick(
+            {
+                breakdown: dataset.breakdown_value,
+                compare: dataset.compare_label || undefined,
+            },
+            // Legacy parity with ActionsHorizontalBar — passes the first result, not the clicked one.
+            deps.indexedResults[0]
+        )
+        return
+    }
+
+    if (!deps.hasPersonsModal || !deps.querySource) {
+        return
+    }
+
+    deps.openPersonsModal({
+        title: dataset.label || '',
+        query: datasetToActorsQuery({ dataset, query: deps.querySource }),
         additionalSelect: {
             value_at_data_point: 'event_count',
             matched_recordings: 'matched_recordings',

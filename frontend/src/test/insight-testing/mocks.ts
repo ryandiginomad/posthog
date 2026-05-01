@@ -60,22 +60,28 @@ export function buildActorsResponse(
 
 function buildTrendsResponse(series: SeriesData[]): TrendsQueryResponse {
     return {
-        results: series.map((s, i) => ({
-            action: {
-                id: `$${s.label.toLowerCase().replace(/\s+/g, '_')}`,
-                type: 'events',
-                name: s.label,
-                order: s.compare ? 0 : i,
-            },
-            label: s.label,
-            count: s.data.reduce((a, b) => a + b, 0),
-            data: s.data,
-            labels: s.labels ?? s.data.map((_, j) => `Day ${j + 1}`),
-            days: s.days ?? s.data.map((_, j) => `2024-01-0${j + 1}`),
-            breakdown_value: s.breakdown_value,
-            compare: s.compare,
-            compare_label: s.compare_label,
-        })),
+        results: series.map((s, i) => {
+            const total = s.data.reduce((a, b) => a + b, 0)
+            return {
+                action: {
+                    id: `$${s.label.toLowerCase().replace(/\s+/g, '_')}`,
+                    type: 'events',
+                    name: s.label,
+                    order: s.compare ? 0 : i,
+                },
+                label: s.label,
+                count: total,
+                // Aggregated value mirrors `count` — the trends backend computes it as the
+                // total over the period for ActionsBarValue / pie / table display modes.
+                aggregated_value: total,
+                data: s.data,
+                labels: s.labels ?? s.data.map((_, j) => `Day ${j + 1}`),
+                days: s.days ?? s.data.map((_, j) => `2024-01-0${j + 1}`),
+                breakdown_value: s.breakdown_value,
+                compare: s.compare,
+                compare_label: s.compare_label,
+            }
+        }),
     } as TrendsQueryResponse
 }
 

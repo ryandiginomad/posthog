@@ -14,6 +14,7 @@ import { themeLogic } from '~/layout/navigation-3000/themeLogic'
 import { groupsModel } from '~/models/groupsModel'
 import { InsightVizNode } from '~/queries/schema/schema-general'
 import { QueryContext } from '~/queries/types'
+import { ChartDisplayType } from '~/types'
 
 import { openPersonsModal } from '../../persons-modal/PersonsModal'
 import { trendsDataLogic } from '../../trendsDataLogic'
@@ -21,8 +22,12 @@ import type { IndexedTrendResult } from '../../types'
 import { buildTrendsYTickFormatter } from '../trends-line-chart/trendsAxisFormat'
 import type { TrendsSeriesMeta } from '../trends-line-chart/trendsSeriesMeta'
 import { TrendsTooltip } from '../trends-line-chart/TrendsTooltip'
-import { handleTrendsBarChartClick, type TrendsBarChartClickDeps } from './handleTrendsBarChartClick'
-import { buildTrendsBarTimeSeries } from './trendsBarChartTransforms'
+import {
+    handleTrendsBarAggregatedChartClick,
+    handleTrendsBarTimeChartClick,
+    type TrendsBarChartClickDeps,
+} from './handleTrendsBarChartClick'
+import { buildTrendsBarAggregatedSeries, buildTrendsBarTimeSeries } from './trendsBarChartTransforms'
 
 interface TrendsBarChartProps {
     context?: QueryContext<InsightVizNode>
@@ -72,6 +77,7 @@ export function TrendsBarChart({ context }: TrendsBarChartProps): JSX.Element | 
 
     const {
         indexedResults,
+        display,
         interval,
         showPercentStackView,
         supportsPercentStackView,
@@ -91,32 +97,45 @@ export function TrendsBarChart({ context }: TrendsBarChartProps): JSX.Element | 
     const { timezone, weekStartDay, baseCurrency } = useValues(teamLogic)
     const { aggregationLabel } = useValues(groupsModel)
 
-    const isPercentStackView = !!showPercentStackView && !!supportsPercentStackView
+    const isAggregated = display === ChartDisplayType.ActionsBarValue
+    const isPercentStackView = !isAggregated && !!showPercentStackView && !!supportsPercentStackView
 
     const resolvedGroupTypeLabel = resolveGroupTypeLabel(labelGroupType, aggregationLabel, context?.groupTypeLabel)
 
-    const hasData = !!indexedResults?.[0]?.data && indexedResults.some((r: IndexedTrendResult) => r.count !== 0)
+    const hasData =
+        !!indexedResults?.[0] &&
+        (isAggregated
+            ? indexedResults.some(
+                  (r: IndexedTrendResult) => Number.isFinite(r.aggregated_value) && r.aggregated_value !== 0
+              )
+            : !!indexedResults[0].data && indexedResults.some((r: IndexedTrendResult) => r.count !== 0))
 
-    const series = useMemo(
-        () =>
-            buildTrendsBarTimeSeries<IndexedTrendResult, TrendsSeriesMeta>(indexedResults ?? [], {
+    const { series, labels } = useMemo(() => {
+        if (isAggregated) {
+            return buildTrendsBarAggregatedSeries<IndexedTrendResult, TrendsSeriesMeta>(indexedResults ?? [], {
                 getColor: getTrendsColor,
                 getHidden: getTrendsHidden,
                 buildMeta: buildBarMeta,
-            }),
-        [indexedResults, getTrendsColor, getTrendsHidden]
-    )
-    const labels = currentPeriodResult?.labels ?? EMPTY_LABELS
+            })
+        }
+        const timeSeries = buildTrendsBarTimeSeries<IndexedTrendResult, TrendsSeriesMeta>(indexedResults ?? [], {
+            getColor: getTrendsColor,
+            getHidden: getTrendsHidden,
+            buildMeta: buildBarMeta,
+        })
+        return { series: timeSeries, labels: currentPeriodResult?.labels ?? EMPTY_LABELS }
+    }, [isAggregated, indexedResults, getTrendsColor, getTrendsHidden, currentPeriodResult?.labels])
 
-    const xTickFormatter = useMemo(
-        () =>
-            createXAxisTickCallback({
-                interval: interval ?? 'day',
-                allDays: currentPeriodResult?.days ?? [],
-                timezone,
-            }),
-        [interval, currentPeriodResult?.days, timezone]
-    )
+    const xTickFormatter = useMemo(() => {
+        if (isAggregated) {
+            return undefined
+        }
+        return createXAxisTickCallback({
+            interval: interval ?? 'day',
+            allDays: currentPeriodResult?.days ?? [],
+            timezone,
+        })
+    }, [isAggregated, interval, currentPeriodResult?.days, timezone])
 
     const yTickFormatter = useMemo(
         () => buildTrendsYTickFormatter(trendsFilter, isPercentStackView, baseCurrency),
@@ -128,12 +147,12 @@ export function TrendsBarChart({ context }: TrendsBarChartProps): JSX.Element | 
             showGrid: true,
             tooltip: { pinnable: true, placement: 'top' },
             yScaleType: yAxisScaleType === 'log10' ? 'log' : 'linear',
-            axisOrientation: 'vertical',
+            axisOrientation: isAggregated ? 'horizontal' : 'vertical',
             barLayout: isPercentStackView ? 'percent' : 'stacked',
             xTickFormatter,
             yTickFormatter,
         }),
-        [yAxisScaleType, isPercentStackView, xTickFormatter, yTickFormatter]
+        [yAxisScaleType, isAggregated, isPercentStackView, xTickFormatter, yTickFormatter]
     )
 
     const canHandleClick = !!context?.onDataPointClick || !!hasPersonsModal
@@ -164,22 +183,42 @@ export function TrendsBarChart({ context }: TrendsBarChartProps): JSX.Element | 
 
     const onPointClick = useCallback(
         (clickData: PointClickData) => {
-            handleTrendsBarChartClick(clickData.series.key, clickData.dataIndex, clickDeps)
+            if (isAggregated) {
+                handleTrendsBarAggregatedChartClick(clickData.dataIndex, clickDeps)
+            } else {
+                handleTrendsBarTimeChartClick(clickData.series.key, clickData.dataIndex, clickDeps)
+            }
         },
-        [clickDeps]
+        [isAggregated, clickDeps]
     )
 
     const renderTooltip = useCallback(
         (ctx: TooltipContext<TrendsSeriesMeta>) => {
+            // Sparse-stacked layout fills ctx.seriesData with all N series — most have data=0
+            // at the hovered band. Filter to the series that actually own a bar at this band so
+            // the tooltip shows one row, not a column of zeros.
+            const tooltipCtx: TooltipContext<TrendsSeriesMeta> = isAggregated
+                ? {
+                      ...ctx,
+                      seriesData: ctx.seriesData.filter((entry) => {
+                          const raw = entry.series.data[ctx.dataIndex]
+                          return typeof raw === 'number' && raw !== 0
+                      }),
+                  }
+                : ctx
             const onRowClick = canHandleClick
                 ? (datum: SeriesDatum) => {
-                      const seriesKey = ctx.seriesData[datum.datasetIndex].series.key
-                      handleTrendsBarChartClick(seriesKey, datum.dataIndex, clickDeps)
+                      if (isAggregated) {
+                          handleTrendsBarAggregatedChartClick(datum.dataIndex, clickDeps)
+                      } else {
+                          const seriesKey = tooltipCtx.seriesData[datum.datasetIndex].series.key
+                          handleTrendsBarTimeChartClick(seriesKey, datum.dataIndex, clickDeps)
+                      }
                   }
                 : undefined
             return (
                 <TrendsTooltip
-                    context={ctx}
+                    context={tooltipCtx}
                     timezone={timezone}
                     interval={interval ?? undefined}
                     breakdownFilter={breakdownFilter ?? undefined}
@@ -209,6 +248,7 @@ export function TrendsBarChart({ context }: TrendsBarChartProps): JSX.Element | 
             context?.formatCompareLabel,
             canHandleClick,
             clickDeps,
+            isAggregated,
         ]
     )
 
@@ -225,7 +265,7 @@ export function TrendsBarChart({ context }: TrendsBarChartProps): JSX.Element | 
             tooltip={renderTooltip}
             onPointClick={canHandleClick ? onPointClick : undefined}
             className="BarGraph"
-            dataAttr="trend-bar-graph"
+            dataAttr={isAggregated ? 'trend-bar-value-graph' : 'trend-bar-graph'}
             onError={handleChartError}
         />
     )

@@ -109,6 +109,16 @@ export function TrendInsight({ view, context, embedded, inSharedMode, editMode }
             return <ActionsPie {...commonProps} />
         }
         if (display === ChartDisplayType.ActionsBarValue) {
+            // Same deferred-overlay gate as ActionsBar above — kept inline for symmetry.
+            const needsLegacyTrendsOverlay = trendsFilter?.showValuesOnSeries || !!trendsFilter?.goalLines?.length
+            if (
+                featureFlags[FEATURE_FLAGS.PRODUCT_ANALYTICS_HOG_CHARTS] &&
+                !isLifecycle &&
+                !isStickiness &&
+                !needsLegacyTrendsOverlay
+            ) {
+                return <TrendsBarChart context={context} />
+            }
             return <ActionsHorizontalBar {...commonProps} />
         }
         if (display === ChartDisplayType.WorldMap) {
