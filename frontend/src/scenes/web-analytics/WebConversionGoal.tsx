@@ -73,6 +73,7 @@ export const WebConversionGoal = ({
                 return <span className="text-overflow max-w-full">{conversionGoal?.customEventName}</span>
             }}
             groupTypes={[TaxonomicFilterGroupType.CustomEvents, TaxonomicFilterGroupType.Actions]}
+            keyOnly
             icon={<IconCursor />}
             placeholder={
                 isWindowLessThan('xl') ? 'Goal' : isWindowLessThan('2xl') ? 'Conversion goal' : 'Add conversion goal'

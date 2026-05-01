@@ -293,4 +293,80 @@ describe('recentTaxonomicFiltersLogic', () => {
 
         expect(logic.values.recentFilters[0].teamId).toBeUndefined()
     })
+
+    describe('keyOnly recordings', () => {
+        const complete = {
+            type: PropertyFilterType.Person,
+            key: 'email',
+            operator: PropertyOperator.Exact,
+            value: 'alice@example.com',
+        } satisfies PersonPropertyFilter
+
+        it('keyOnly write coexists with an existing complete record for the same key', () => {
+            logic.actions.recordRecentFilter(
+                TaxonomicFilterGroupType.PersonProperties,
+                'Person properties',
+                'email',
+                { name: 'email' },
+                undefined,
+                complete
+            )
+            logic.actions.recordRecentFilter(
+                TaxonomicFilterGroupType.PersonProperties,
+                'Person properties',
+                'email',
+                { name: 'email' },
+                undefined,
+                undefined,
+                true
+            )
+
+            const filters = logic.values.recentFilters
+            expect(filters).toHaveLength(2)
+            expect(filters[0].propertyFilter).toBeUndefined()
+            expect(filters[1].propertyFilter).toMatchObject(complete)
+        })
+
+        it('non-keyOnly partial write is still suppressed when a complete record exists', () => {
+            logic.actions.recordRecentFilter(
+                TaxonomicFilterGroupType.PersonProperties,
+                'Person properties',
+                'email',
+                { name: 'email' },
+                undefined,
+                complete
+            )
+            logic.actions.recordRecentFilter(TaxonomicFilterGroupType.PersonProperties, 'Person properties', 'email', {
+                name: 'email',
+            })
+
+            expect(logic.values.recentFilters).toHaveLength(1)
+            expect(logic.values.recentFilters[0].propertyFilter).toMatchObject(complete)
+        })
+
+        it('keyOnly writes for the same key dedup to the most recent', () => {
+            logic.actions.recordRecentFilter(
+                TaxonomicFilterGroupType.EventProperties,
+                'Event properties',
+                '$browser',
+                { name: '$browser' },
+                undefined,
+                undefined,
+                true
+            )
+            logic.actions.recordRecentFilter(
+                TaxonomicFilterGroupType.EventProperties,
+                'Event properties',
+                '$browser',
+                { name: '$browser', refreshed: true },
+                undefined,
+                undefined,
+                true
+            )
+
+            const filters = logic.values.recentFilters
+            expect(filters).toHaveLength(1)
+            expect(filters[0].item).toEqual({ name: '$browser', refreshed: true })
+        })
+    })
 })

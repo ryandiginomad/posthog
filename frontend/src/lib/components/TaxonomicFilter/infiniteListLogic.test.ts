@@ -9,11 +9,12 @@ import { dataWarehouseSettingsSceneLogic } from 'scenes/data-warehouse/settings/
 import { useMocks } from '~/mocks/jest'
 import { initKeaTests } from '~/test/init'
 import { mockEventDefinitions, mockEventPropertyDefinitions } from '~/test/mocks'
-import { AppContext, PropertyDefinition, PropertyType } from '~/types'
+import { AppContext, PropertyDefinition, PropertyFilterType, PropertyOperator, PropertyType } from '~/types'
 
 import { joinsLogic } from 'products/data_warehouse/frontend/shared/logics/joinsLogic'
 
 import { infiniteListLogic } from './infiniteListLogic'
+import { hasRecentContext, recentTaxonomicFiltersLogic } from './recentTaxonomicFiltersLogic'
 
 window.POSTHOG_APP_CONTEXT = {
     current_team: { id: MOCK_TEAM_ID },
@@ -813,6 +814,81 @@ describe('infiniteListLogic', () => {
                 .toMatchValues({
                     keywordShortcutItems: [],
                 })
+        })
+    })
+
+    describe('contextFilteredRecentItems with keyOnly mode', () => {
+        beforeEach(() => {
+            localStorage.clear()
+            recentTaxonomicFiltersLogic.mount()
+        })
+
+        afterEach(() => {
+            recentTaxonomicFiltersLogic.unmount()
+        })
+
+        const recordKeyOnly = (key: string, item: Record<string, any> = { name: key }): void => {
+            recentTaxonomicFiltersLogic.actions.recordRecentFilter(
+                TaxonomicFilterGroupType.EventProperties,
+                'Event properties',
+                key,
+                item,
+                undefined,
+                undefined,
+                true
+            )
+        }
+
+        const recordComplete = (key: string, value: string): void => {
+            recentTaxonomicFiltersLogic.actions.recordRecentFilter(
+                TaxonomicFilterGroupType.EventProperties,
+                'Event properties',
+                key,
+                { name: key },
+                undefined,
+                {
+                    type: PropertyFilterType.Event,
+                    key,
+                    operator: PropertyOperator.Exact,
+                    value,
+                }
+            )
+        }
+
+        it('strips propertyFilter from recents and dedups by key when keyOnly is set', () => {
+            recordComplete('$browser', 'Chrome')
+            recordComplete('$browser', 'Safari')
+            recordKeyOnly('$os')
+
+            const listLogic = logicWith({
+                listGroupType: TaxonomicFilterGroupType.EventProperties,
+                taxonomicGroupTypes: [TaxonomicFilterGroupType.EventProperties],
+                keyOnly: true,
+            })
+
+            const items = listLogic.values.contextFilteredRecentItems
+            expect(items).toHaveLength(2)
+            for (const item of items) {
+                expect(hasRecentContext(item)).toBe(true)
+                if (hasRecentContext(item)) {
+                    expect(item._recentContext.propertyFilter).toBeUndefined()
+                }
+            }
+            expect(items.map((i) => ('name' in i ? i.name : null))).toEqual(['$os', '$browser'])
+        })
+
+        it('preserves complete recents (with their propertyFilter) when keyOnly is not set', () => {
+            recordComplete('$browser', 'Chrome')
+
+            const listLogic = logicWith({
+                listGroupType: TaxonomicFilterGroupType.EventProperties,
+                taxonomicGroupTypes: [TaxonomicFilterGroupType.EventProperties],
+            })
+
+            const items = listLogic.values.contextFilteredRecentItems
+            expect(items).toHaveLength(1)
+            const [item] = items
+            expect(hasRecentContext(item) && item._recentContext.propertyFilter).toBeTruthy()
         })
     })
 })

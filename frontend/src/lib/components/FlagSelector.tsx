@@ -40,6 +40,7 @@ export function FlagSelector({
         popoverEnabled: true,
         selectFirstItem: true,
         taxonomicFilterLogicKey: 'flag-selectorz',
+        keyOnly: true,
     }
 
     return (

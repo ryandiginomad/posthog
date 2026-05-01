@@ -143,6 +143,7 @@ export function EventConfigurationModal({ event, onClose }: EventConfigurationMo
                                 }}
                                 value={''}
                                 placeholder="Select or type an event name"
+                                keyOnly
                             />
                         )}
                     </div>
@@ -164,6 +165,7 @@ export function EventConfigurationModal({ event, onClose }: EventConfigurationMo
                             }}
                             value={currentEvent?.revenueProperty || undefined}
                             placeholder="Select the property that contains revenue amount"
+                            keyOnly
                             disabledReason={
                                 !currentEvent?.eventName
                                     ? 'Select an event name first'

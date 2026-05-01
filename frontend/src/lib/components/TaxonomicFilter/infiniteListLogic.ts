@@ -439,18 +439,37 @@ export const infiniteListLogic = kea<infiniteListLogicType>([
             (listGroupType, activeTab): boolean => listGroupType === activeTab,
         ],
         contextFilteredRecentItems: [
-            (s) => [s.recentFilterItems, s.taxonomicGroupTypes],
+            (s) => [s.recentFilterItems, s.taxonomicGroupTypes, (_, props: InfiniteListLogicProps) => props.keyOnly],
             (
                 recentFilterItems: TaxonomicDefinitionTypes[],
-                taxonomicGroupTypes: TaxonomicFilterGroupType[]
+                taxonomicGroupTypes: TaxonomicFilterGroupType[],
+                keyOnly: boolean | undefined
             ): TaxonomicDefinitionTypes[] => {
                 if (!recentFilterItems?.length) {
                     return []
                 }
                 const availableTypes = new Set(taxonomicGroupTypes)
-                return recentFilterItems.filter(
+                const inScope = recentFilterItems.filter(
                     (item) => hasRecentContext(item) && availableTypes.has(item._recentContext.sourceGroupType)
                 )
+                if (!keyOnly) {
+                    return inScope
+                }
+                const seen = new Set<string>()
+                const keyOnlyItems: TaxonomicDefinitionTypes[] = []
+                for (const item of inScope) {
+                    if (!hasRecentContext(item)) {
+                        continue
+                    }
+                    const value = item._recentContext.sourceGroupType + '::' + ('name' in item ? item.name : '')
+                    if (seen.has(value)) {
+                        continue
+                    }
+                    seen.add(value)
+                    const { propertyFilter: _propertyFilter, ...restContext } = item._recentContext
+                    keyOnlyItems.push({ ...item, _recentContext: restContext } as unknown as TaxonomicDefinitionTypes)
+                }
+                return keyOnlyItems
             },
         ],
         contextFilteredPinnedItems: [

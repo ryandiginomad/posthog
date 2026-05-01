@@ -268,6 +268,7 @@ export function ActionFilterRow({
             filter={filter}
             suggestedFiltersLabel={suggestedFiltersLabel}
             enableKeywordShortcuts
+            keyOnly
             onChange={(changedValue, taxonomicGroupType, item) => {
                 if (isQuickFilterItem(item)) {
                     if (item.eventName) {

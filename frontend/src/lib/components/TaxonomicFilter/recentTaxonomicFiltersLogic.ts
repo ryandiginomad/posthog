@@ -92,7 +92,8 @@ export const recentTaxonomicFiltersLogic = kea<recentTaxonomicFiltersLogicType>(
             value: TaxonomicFilterValue,
             item: any,
             teamId?: number,
-            propertyFilter?: AnyPropertyFilter
+            propertyFilter?: AnyPropertyFilter,
+            keyOnly?: boolean
         ) => ({
             groupType,
             groupName,
@@ -100,6 +101,7 @@ export const recentTaxonomicFiltersLogic = kea<recentTaxonomicFiltersLogicType>(
             item,
             teamId,
             propertyFilter,
+            keyOnly,
         }),
         clearRecentFilters: true,
     }),
@@ -109,14 +111,18 @@ export const recentTaxonomicFiltersLogic = kea<recentTaxonomicFiltersLogicType>(
             { persist: true, prefix: `${teamId}__` },
             {
                 clearRecentFilters: () => [],
-                recordRecentFilter: (state, { groupType, groupName, value, item, teamId, propertyFilter }) => {
+                recordRecentFilter: (state, { groupType, groupName, value, item, teamId, propertyFilter, keyOnly }) => {
                     if (EXCLUDED_RECENT_FILTER_GROUP_TYPES.has(groupType) || value == null) {
                         return state
                     }
 
                     const incomingComplete = isCompleteRecentPropertyFilter(propertyFilter)
+                    // A non-keyOnly partial write is treated as a stale precursor to a complete filter
+                    // and should not stomp the better record. A keyOnly write is the final value, so
+                    // it is allowed to coexist with — and bump the recency of — any complete record.
                     if (
                         !incomingComplete &&
+                        !keyOnly &&
                         state.some(
                             (f) =>
                                 f.groupType === groupType &&

@@ -323,6 +323,7 @@ export function DefinitionEdit(props: DefinitionLogicProps): JSX.Element {
                                                     onChange(typeof changedValue === 'string' ? changedValue : null)
                                                 }
                                                 placeholder="Select a property to promote"
+                                                keyOnly
                                             />
                                         )}
                                     </LemonField>

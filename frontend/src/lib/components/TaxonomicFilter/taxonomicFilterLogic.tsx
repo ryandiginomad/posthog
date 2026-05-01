@@ -1743,11 +1743,12 @@ export const taxonomicFilterLogic = kea<taxonomicFilterLogicType>([
                 })
 
                 // Record to recents (deferred to avoid render loop).
-                // Skip property groups — these are just the key-picking step;
-                // the complete filter (with operator + value) is recorded by propertyFilterLogic.
-                // Skip QuickFilterItem shortcuts — they are synthetic, not real data definitions.
+                // In keyOnly mode, the key is the final value — no follow-up propertyFilterLogic will record.
+                // Otherwise skip property groups, since the complete filter (with operator + value) is
+                // recorded by propertyFilterLogic. QuickFilterItem shortcuts are synthetic, never recorded.
                 const hasCompletePropertyFilter = hasRecentContext(item) && item._recentContext.propertyFilter
                 const isRecordedByPropertyFilterLogic =
+                    !props.keyOnly &&
                     !hasCompletePropertyFilter &&
                     (PROPERTY_TAXONOMIC_GROUP_TYPES.has(sourceGroupType) ||
                         SHORTCUT_TO_PROPERTY_FILTER_GROUP_TYPES.has(sourceGroupType) ||
@@ -1761,16 +1762,18 @@ export const taxonomicFilterLogic = kea<taxonomicFilterLogicType>([
                             const sourceGroupName = hasRecentContext(item)
                                 ? item._recentContext.sourceGroupName
                                 : group.name
-                            const propertyFilterFromRecent = hasRecentContext(item)
-                                ? item._recentContext.propertyFilter
-                                : undefined
+                            const propertyFilterFromRecent =
+                                !props.keyOnly && hasRecentContext(item)
+                                    ? item._recentContext.propertyFilter
+                                    : undefined
                             recentTaxonomicFiltersLogic.actions.recordRecentFilter(
                                 sourceGroupType,
                                 sourceGroupName,
                                 value,
                                 cleanItem,
                                 teamLogic.values.currentTeamId ?? undefined,
-                                propertyFilterFromRecent
+                                propertyFilterFromRecent,
+                                !!props.keyOnly
                             )
                         }
                     }, 0)

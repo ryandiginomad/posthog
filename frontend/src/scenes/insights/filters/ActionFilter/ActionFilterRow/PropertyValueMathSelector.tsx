@@ -55,6 +55,7 @@ export function PropertyValueMathSelector({
                 eventNames={mathName ? [mathName] : []}
                 data-attr="math-property-select"
                 showNumericalPropsOnly={showNumericalPropsOnly}
+                keyOnly
                 renderValue={(currentValue) => (
                     <Tooltip
                         title={
