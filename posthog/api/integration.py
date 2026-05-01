@@ -911,6 +911,37 @@ class IntegrationViewSet(
         linear = LinearIntegration(instance)
         return Response({"teams": linear.list_teams()})
 
+    @action(methods=["GET"], detail=True, url_path="anthropic_agents")
+    def anthropic_agents(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        instance = self.get_object()
+        anthropic = AnthropicIntegration(instance)
+        agents = [
+            {
+                "id": agent["id"],
+                "name": agent.get("name", agent["id"]),
+                "version": agent.get("version"),
+            }
+            for agent in anthropic.list_agents()
+        ]
+        return Response({"agents": agents})
+
+    @action(methods=["GET"], detail=True, url_path="anthropic_environments")
+    def anthropic_environments(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        instance = self.get_object()
+        anthropic = AnthropicIntegration(instance)
+        environments = [{"id": env["id"], "name": env.get("name", env["id"])} for env in anthropic.list_environments()]
+        return Response({"environments": environments})
+
+    @action(methods=["GET"], detail=True, url_path="anthropic_vaults")
+    def anthropic_vaults(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        instance = self.get_object()
+        anthropic = AnthropicIntegration(instance)
+        vaults = [
+            {"id": vault["id"], "display_name": vault.get("display_name", vault["id"])}
+            for vault in anthropic.list_vaults()
+        ]
+        return Response({"vaults": vaults})
+
     @extend_schema(
         parameters=[GitHubReposQuerySerializer],
         responses={200: GitHubReposResponseSerializer},
