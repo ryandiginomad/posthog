@@ -21,6 +21,7 @@ from django.utils import timezone
 
 import requests
 import structlog
+from anthropic import Anthropic, APIStatusError, AuthenticationError, PermissionDeniedError
 from disposable_email_domains import blocklist as disposable_email_domains_list
 from free_email_domains import whitelist as free_email_domains_list
 from google.auth.transport.requests import Request as GoogleRequest
@@ -142,6 +143,7 @@ ERROR_TOKEN_REFRESH_FAILED = "TOKEN_REFRESH_FAILED"
 
 class Integration(models.Model):
     class IntegrationKind(models.TextChoices):
+        ANTHROPIC = "anthropic"
         APPLE_PUSH = "apns"
         AZURE_BLOB = "azure-blob"
         BING_ADS = "bing-ads"
@@ -2903,6 +2905,83 @@ class TwilioIntegration:
             integration.errors = ""
             integration.save()
 
+        return integration
+
+
+ANTHROPIC_MANAGED_AGENTS_BETA_HEADER = "managed-agents-2026-04-01"
+
+
+class AnthropicIntegration:
+    integration: Integration
+
+    def __init__(self, integration: Integration) -> None:
+        if integration.kind != Integration.IntegrationKind.ANTHROPIC.value:
+            raise Exception("AnthropicIntegration init called with Integration with wrong 'kind'")
+        self.integration = integration
+
+    @property
+    def _client(self) -> Anthropic:
+        api_key = self.integration.sensitive_config.get("api_key")
+        if not api_key:
+            raise ValidationError("Anthropic API key is missing from integration")
+        return Anthropic(api_key=api_key)
+
+    @staticmethod
+    def validate_key(api_key: str) -> None:
+        try:
+            Anthropic(api_key=api_key).models.list(limit=1)
+        except AuthenticationError:
+            raise ValidationError({"api_key": "Invalid Anthropic API key"})
+        except PermissionDeniedError:
+            raise ValidationError({"api_key": "Anthropic API key lacks required permissions"})
+        except APIStatusError as e:
+            raise ValidationError({"api_key": f"Failed to validate Anthropic API key: {e.message}"})
+
+    def _managed_agents_get(self, path: str) -> dict:
+        return self._client.get(
+            path,
+            cast_to=dict,
+            options={"headers": {"anthropic-beta": ANTHROPIC_MANAGED_AGENTS_BETA_HEADER}},
+        )
+
+    def list_agents(self) -> list[dict]:
+        response = self._managed_agents_get("/v1/agents")
+        return response.get("data", [])
+
+    def list_environments(self) -> list[dict]:
+        response = self._managed_agents_get("/v1/environments")
+        return response.get("data", [])
+
+    def list_vaults(self) -> list[dict]:
+        response = self._managed_agents_get("/v1/vaults")
+        return response.get("data", [])
+
+    @classmethod
+    def integration_from_key(
+        cls,
+        api_key: str,
+        team_id: int,
+        created_by: User,
+        workspace_label: str | None = None,
+    ) -> Integration:
+        cls.validate_key(api_key)
+
+        integration_id = workspace_label or f"workspace-{team_id}"
+        config: dict[str, Any] = {}
+        if workspace_label:
+            config["workspace_label"] = workspace_label
+
+        integration, _ = Integration.objects.update_or_create(
+            team_id=team_id,
+            kind=Integration.IntegrationKind.ANTHROPIC.value,
+            integration_id=integration_id,
+            defaults={
+                "config": config,
+                "sensitive_config": {"api_key": api_key},
+                "created_by": created_by,
+                "errors": "",
+            },
+        )
         return integration
 
 

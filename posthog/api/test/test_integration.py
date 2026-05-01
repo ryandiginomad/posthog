@@ -2497,3 +2497,116 @@ class TestGitHubOAuthAuthorize:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "GitHub App client ID is not configured" in response.json()["detail"]
+
+
+class TestAnthropicIntegration:
+    @pytest.fixture(autouse=True)
+    def setup_integration(self, db):
+        self.organization = Organization.objects.create(name="Test Org")
+        self.team = Team.objects.create(organization=self.organization, name="Test Team")
+        self.user = User.objects.create_and_join(
+            self.organization, "test@posthog.com", "test", level=OrganizationMembership.Level.ADMIN
+        )
+
+    @patch("posthog.models.integration.Anthropic")
+    def test_create_with_valid_key(self, mock_anthropic_class, client: HttpClient):
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+        mock_client.models.list.return_value = MagicMock()
+
+        client.force_login(self.user)
+        response = client.post(
+            f"/api/environments/{self.team.pk}/integrations",
+            {
+                "kind": "anthropic",
+                "config": {"api_key": "sk-ant-test", "workspace_label": "production"},
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["kind"] == "anthropic"
+
+        integration = Integration.objects.get(id=response.json()["id"])
+        assert integration.kind == "anthropic"
+        assert integration.team == self.team
+        assert integration.config == {"workspace_label": "production"}
+        assert integration.sensitive_config == {"api_key": "sk-ant-test"}
+        assert integration.integration_id == "production"
+        assert integration.created_by == self.user
+
+    @patch("posthog.models.integration.Anthropic")
+    def test_create_without_workspace_label_uses_default_id(self, mock_anthropic_class, client: HttpClient):
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+        mock_client.models.list.return_value = MagicMock()
+
+        client.force_login(self.user)
+        response = client.post(
+            f"/api/environments/{self.team.pk}/integrations",
+            {"kind": "anthropic", "config": {"api_key": "sk-ant-test"}},
+            content_type="application/json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        integration = Integration.objects.get(id=response.json()["id"])
+        assert integration.config == {}
+        assert integration.integration_id == f"workspace-{self.team.pk}"
+
+    @patch("posthog.models.integration.Anthropic")
+    def test_create_rejects_missing_api_key(self, mock_anthropic_class, client: HttpClient):
+        client.force_login(self.user)
+        response = client.post(
+            f"/api/environments/{self.team.pk}/integrations",
+            {"kind": "anthropic", "config": {}},
+            content_type="application/json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Anthropic API key" in response.json()["detail"]
+        mock_anthropic_class.assert_not_called()
+
+    @patch("posthog.models.integration.Anthropic")
+    def test_create_rejects_unauthenticated_key(self, mock_anthropic_class, client: HttpClient):
+        from anthropic import AuthenticationError
+
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+        mock_client.models.list.side_effect = AuthenticationError(
+            message="invalid x-api-key",
+            response=MagicMock(status_code=401),
+            body=None,
+        )
+
+        client.force_login(self.user)
+        response = client.post(
+            f"/api/environments/{self.team.pk}/integrations",
+            {"kind": "anthropic", "config": {"api_key": "sk-ant-bad"}},
+            content_type="application/json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Invalid Anthropic API key" in str(response.json())
+        assert not Integration.objects.filter(kind="anthropic", team=self.team).exists()
+
+    @patch("posthog.models.integration.Anthropic")
+    def test_create_rejects_permission_denied(self, mock_anthropic_class, client: HttpClient):
+        from anthropic import PermissionDeniedError
+
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+        mock_client.models.list.side_effect = PermissionDeniedError(
+            message="forbidden",
+            response=MagicMock(status_code=403),
+            body=None,
+        )
+
+        client.force_login(self.user)
+        response = client.post(
+            f"/api/environments/{self.team.pk}/integrations",
+            {"kind": "anthropic", "config": {"api_key": "sk-ant-noperm"}},
+            content_type="application/json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "lacks required permissions" in str(response.json())

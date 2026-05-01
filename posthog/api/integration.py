@@ -35,6 +35,7 @@ from posthog.models.integration import (
     ERROR_TOKEN_REFRESH_FAILED,
     GITHUB_REPOSITORY_REFRESH_COOLDOWN_SECONDS,
     SLACK_INTEGRATION_KINDS,
+    AnthropicIntegration,
     AzureBlobIntegration,
     AzureBlobIntegrationError,
     ClickUpIntegration,
@@ -387,6 +388,26 @@ class IntegrationSerializer(serializers.ModelSerializer, UserAccessControlSerial
 
             instance = GitLabIntegration.create_integration(
                 hostname, project_id, project_access_token, team_id, request.user
+            )
+            return instance
+
+        elif validated_data["kind"] == "anthropic":
+            config = validated_data.get("config", {})
+            api_key = config.get("api_key")
+            workspace_label = config.get("workspace_label")
+
+            if not api_key:
+                raise ValidationError("An Anthropic API key must be provided")
+            if not isinstance(api_key, str):
+                raise ValidationError("Anthropic API key must be a string")
+            if workspace_label is not None and not isinstance(workspace_label, str):
+                raise ValidationError("Workspace label must be a string")
+
+            instance = AnthropicIntegration.integration_from_key(
+                api_key=api_key,
+                team_id=team_id,
+                created_by=request.user,
+                workspace_label=workspace_label,
             )
             return instance
 
