@@ -35,6 +35,15 @@ tools:
         description: >
             Get a specific integration by ID. Returns the full integration details including kind, display name,
             non-sensitive configuration, error status, and creation metadata. Does not expose sensitive credentials.
+    integrations-anthropic-agents-retrieve:
+        operation: integrations_anthropic_agents_retrieve
+        enabled: false
+    integrations-anthropic-retrieve:
+        operation: integrations_anthropic_retrieve
+        enabled: false
+    integrations-anthropic-vaults-retrieve:
+        operation: integrations_anthropic_vaults_retrieve
+        enabled: false
     integrations-authorize-retrieve:
         operation: integrations_authorize_retrieve
         enabled: false
